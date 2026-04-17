@@ -133,3 +133,31 @@ Toggles completion for one checkpoint.
   "payload": { "id": "cp1" }
 }
 ```
+
+### `webrtc.signal`
+
+Forwards WebRTC offer, answer, and ICE candidate messages between the student and tutor in the same authenticated room. The server does not inspect or store media. It only relays signaling payloads.
+
+Description payload:
+
+```json
+{
+  "type": "webrtc.signal",
+  "payload": {
+    "kind": "description",
+    "description": { "type": "offer", "sdp": "..." }
+  }
+}
+```
+
+ICE candidate payload:
+
+```json
+{
+  "type": "webrtc.signal",
+  "payload": {
+    "kind": "ice",
+    "candidate": { "candidate": "...", "sdpMid": "0", "sdpMLineIndex": 0 }
+  }
+}
+```

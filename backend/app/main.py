@@ -69,8 +69,8 @@ class Checkpoint:
 class LoomState:
     notes: str = "Start by writing the simplest version of the idea. The tutor can turn it into concepts as the session grows."
     concepts: list[Concept] = field(default_factory=lambda: [
-        Concept(id="c-foundation", label="Prior knowledge", x=18, y=28, owner="system"),
-        Concept(id="c-target", label="Today's goal", x=62, y=34, owner="system"),
+        Concept(id="c-foundation", label="Prior knowledge", x=18, y=22, owner="system"),
+        Concept(id="c-target", label="Today's goal", x=78, y=22, owner="system"),
     ])
     links: list[dict[str, str]] = field(default_factory=lambda: [{"source": "c-foundation", "target": "c-target"}])
     clarity: dict[str, int] = field(default_factory=lambda: {"lost": 0, "steady": 0, "clear": 0})
@@ -111,6 +111,19 @@ USERS = {
 }
 
 SESSIONS: dict[str, TutoringSession] = {}
+
+CONCEPT_SLOTS = [
+    {"x": 18, "y": 22},
+    {"x": 78, "y": 22},
+    {"x": 24, "y": 50},
+    {"x": 54, "y": 50},
+    {"x": 84, "y": 50},
+    {"x": 18, "y": 78},
+    {"x": 48, "y": 78},
+    {"x": 78, "y": 78},
+    {"x": 42, "y": 25},
+    {"x": 64, "y": 72},
+]
 
 
 def _b64(data: bytes) -> str:
@@ -163,6 +176,20 @@ def get_user_from_auth(authorization: str | None) -> User:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
     return verify_token(authorization.split(" ", 1)[1])
+
+
+def concept_position(concepts: list[Concept], requested_x: float, requested_y: float) -> dict[str, float]:
+    def occupied(candidate: dict[str, float]) -> bool:
+        return any(abs(concept.x - candidate["x"]) < 30 and abs(concept.y - candidate["y"]) < 22 for concept in concepts)
+
+    requested = {"x": max(8, min(92, requested_x)), "y": max(14, min(86, requested_y))}
+    if not occupied(requested):
+        return requested
+    for slot in CONCEPT_SLOTS:
+        if not occupied(slot):
+            return slot
+    index = len(concepts)
+    return {"x": 16 + ((index * 32) % 68), "y": 22 + ((index * 29) % 56)}
 
 
 class ConnectionManager:
@@ -268,16 +295,26 @@ def apply_loom_event(session: TutoringSession, event: dict[str, Any], user: User
     event_type = event.get("type")
     payload = event.get("payload", {})
 
+    if event_type == "webrtc.signal":
+        return {
+            "type": "webrtc.signal",
+            "session_id": session.id,
+            "actor": public_user(user),
+            "payload": payload,
+            "server_ts": time.time(),
+        }
+
     if event_type == "loom.notes.update":
         session.loom.notes = str(payload.get("notes", ""))[:5000]
     elif event_type == "loom.concept.add":
         label = str(payload.get("label", "New concept")).strip()[:48] or "New concept"
+        position = concept_position(session.loom.concepts, float(payload.get("x", 50)), float(payload.get("y", 50)))
         session.loom.concepts.append(
             Concept(
                 id=str(uuid.uuid4())[:8],
                 label=label,
-                x=float(payload.get("x", 50)),
-                y=float(payload.get("y", 50)),
+                x=position["x"],
+                y=position["y"],
                 owner=user.id,
             )
         )

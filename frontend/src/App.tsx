@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -46,6 +46,13 @@ type TutoringSession = {
   loom: LoomState;
 };
 
+type RealtimeEvent = {
+  type: string;
+  actor?: User;
+  payload?: Record<string, unknown>;
+  state?: LoomState;
+};
+
 const demoLogins = {
   student: { email: "student@lowprep.dev", password: "demo123" },
   tutor: { email: "tutor@lowprep.dev", password: "demo123" }
@@ -54,6 +61,60 @@ const demoLogins = {
 function wsUrl(sessionId: string, token: string) {
   const base = API_URL.replace(/^http/, "ws");
   return `${base}/ws/sessions/${sessionId}?token=${encodeURIComponent(token)}`;
+}
+
+const conceptSlots = [
+  { x: 18, y: 22 },
+  { x: 78, y: 22 },
+  { x: 24, y: 50 },
+  { x: 54, y: 50 },
+  { x: 84, y: 50 },
+  { x: 18, y: 78 },
+  { x: 48, y: 78 },
+  { x: 78, y: 78 },
+  { x: 42, y: 25 },
+  { x: 64, y: 72 }
+];
+
+function nextConceptPosition(concepts: Concept[]) {
+  const occupied = (candidate: { x: number; y: number }) =>
+    concepts.some((concept) => Math.abs(concept.x - candidate.x) < 30 && Math.abs(concept.y - candidate.y) < 22);
+
+  const openSlot = conceptSlots.find((slot) => !occupied(slot));
+  if (openSlot) return openSlot;
+
+  const index = concepts.length;
+  return {
+    x: 16 + ((index * 32) % 68),
+    y: 22 + ((index * 29) % 56)
+  };
+}
+
+function graphLayout(concepts: Concept[]) {
+  const displaySlots = [
+    { x: 18, y: 24 },
+    { x: 50, y: 24 },
+    { x: 82, y: 24 },
+    { x: 68, y: 48 },
+    { x: 30, y: 48 },
+    { x: 82, y: 62 },
+    { x: 18, y: 72 },
+    { x: 50, y: 72 },
+    { x: 82, y: 84 },
+    { x: 30, y: 86 },
+    { x: 62, y: 88 },
+    { x: 14, y: 46 }
+  ];
+
+  return concepts.map((concept, index) => {
+    const slot = displaySlots[index % displaySlots.length];
+    const page = Math.floor(index / displaySlots.length);
+    return {
+      ...concept,
+      x: Math.min(88, slot.x + page * 3),
+      y: Math.min(90, slot.y + page * 2)
+    };
+  });
 }
 
 function App() {
@@ -167,6 +228,10 @@ function LoginScreen({ error, onLogin }: { error: string; onLogin: (role: Role) 
   return (
     <main className="auth-shell">
       <section className="auth-panel">
+        <div className="brand-mark">
+          <span>LP</span>
+          <strong>Low Prep</strong>
+        </div>
         <div>
           <p className="eyebrow">Low Prep Live Tutoring</p>
           <h1>Turn a tutoring call into a shared learning map.</h1>
@@ -180,13 +245,25 @@ function LoginScreen({ error, onLogin }: { error: string; onLogin: (role: Role) 
             Join as tutor
           </button>
         </div>
+        <div className="proof-strip">
+          <span>live WebSockets</span>
+          <span>concept graph</span>
+          <span>clarity pulse</span>
+        </div>
         {error && <p className="error">{error}</p>}
       </section>
-      <img
-        className="auth-image"
-        src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1100&q=80"
-        alt="Students working together around a laptop"
-      />
+      <section className="auth-visual">
+        <img
+          className="auth-image"
+          src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1100&q=80"
+          alt="Students working together around a laptop"
+        />
+        <div className="floating-lesson">
+          <small>today's anchor</small>
+          <strong>Word problem to equation</strong>
+          <span>3 checkpoints ready</span>
+        </div>
+      </section>
     </main>
   );
 }
@@ -195,7 +272,7 @@ function TopBar({ user, onLogout }: { user: User; onLogout: () => void }) {
   return (
     <header className="topbar">
       <div>
-        <strong>Low Prep</strong>
+        <strong className="nav-logo">Low Prep</strong>
         <span>{user.role} dashboard</span>
       </div>
       <div className="topbar-user">
@@ -235,6 +312,20 @@ function Dashboard({
         <button className="secondary" onClick={() => refresh()}>
           Refresh
         </button>
+      </div>
+      <div className="insight-row">
+        <div>
+          <strong>{sessions.filter((session) => session.status === "pending").length}</strong>
+          <span>waiting requests</span>
+        </div>
+        <div>
+          <strong>{sessions.filter((session) => session.status === "accepted").length}</strong>
+          <span>active rooms</span>
+        </div>
+        <div>
+          <strong>4</strong>
+          <span>live learning signals</span>
+        </div>
       </div>
       {error && <p className="error">{error}</p>}
       {user.role === "student" && <RequestForm onSubmit={requestSession} />}
@@ -315,6 +406,7 @@ function SessionRoom({
 }) {
   const [loom, setLoom] = useState<LoomState>(session.loom);
   const [connection, setConnection] = useState("connecting");
+  const [rtcSignal, setRtcSignal] = useState<RealtimeEvent | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -325,13 +417,14 @@ function SessionRoom({
     socket.onmessage = (message) => {
       const event = JSON.parse(message.data);
       if (event.type === "loom.state") setLoom(event.state);
+      if (event.type === "webrtc.signal") setRtcSignal(event);
     };
     return () => socket.close();
   }, [session.id, token]);
 
-  function send(type: string, payload: Record<string, unknown>) {
+  const send = useCallback((type: string, payload: Record<string, unknown>) => {
     socketRef.current?.send(JSON.stringify({ type, payload, client_ts: Date.now() }));
-  }
+  }, []);
 
   return (
     <section className="room">
@@ -340,14 +433,20 @@ function SessionRoom({
           Back
         </button>
         <div>
-          <p className="eyebrow">{session.topic}</p>
+          <p className="eyebrow">Live studio: {session.topic}</p>
           <h1>{session.goal}</h1>
         </div>
         <span className={`connection ${connection}`}>{connection}</span>
       </div>
       <div className="dual-pane">
         <section className="video-pane">
-          <LocalVideoPane sessionId={session.id} />
+          <PeerVideoPane
+            user={user}
+            connection={connection}
+            rtcSignal={rtcSignal}
+            send={send}
+            sessionId={session.id}
+          />
         </section>
         <ConceptLoom loom={loom} user={user} setLoom={setLoom} send={send} />
       </div>
@@ -355,20 +454,80 @@ function SessionRoom({
   );
 }
 
-function LocalVideoPane({ sessionId }: { sessionId: string }) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+function PeerVideoPane({
+  user,
+  connection,
+  rtcSignal,
+  send,
+  sessionId
+}: {
+  user: User;
+  connection: string;
+  rtcSignal: RealtimeEvent | null;
+  send: (type: string, payload: Record<string, unknown>) => void;
+  sessionId: string;
+}) {
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const peerRef = useRef<RTCPeerConnection | null>(null);
+  const makingOfferRef = useRef(false);
+  const ignoreOfferRef = useRef(false);
   const [cameraState, setCameraState] = useState("camera off");
+  const [peerState, setPeerState] = useState("waiting for peer");
+  const [remoteActive, setRemoteActive] = useState(false);
   const [muted, setMuted] = useState(false);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
+    let disposed = false;
+    const peer = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+    peerRef.current = peer;
+
+    peer.onicecandidate = (event) => {
+      if (event.candidate) {
+        send("webrtc.signal", { kind: "ice", candidate: event.candidate.toJSON() });
+      }
+    };
+
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === "connected") setPeerState("peer connected");
+      if (peer.connectionState === "connecting") setPeerState("connecting peer");
+      if (peer.connectionState === "disconnected") setPeerState("peer disconnected");
+      if (peer.connectionState === "failed") setPeerState("peer reconnect needed");
+    };
+
+    peer.ontrack = (event) => {
+      const [remoteStream] = event.streams;
+      if (remoteVideoRef.current && remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        setRemoteActive(true);
+      }
+    };
+
+    peer.onnegotiationneeded = async () => {
+      try {
+        makingOfferRef.current = true;
+        await peer.setLocalDescription();
+        if (peer.localDescription) {
+          send("webrtc.signal", { kind: "description", description: peer.localDescription.toJSON() });
+        }
+      } catch {
+        setPeerState("call setup paused");
+      } finally {
+        makingOfferRef.current = false;
+      }
+    };
 
     async function startCamera() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
+        if (disposed) return;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
         }
+        stream.getTracks().forEach((track) => peer.addTrack(track, stream as MediaStream));
         setCameraState("camera live");
       } catch {
         setCameraState("camera blocked");
@@ -378,12 +537,54 @@ function LocalVideoPane({ sessionId }: { sessionId: string }) {
     startCamera();
 
     return () => {
+      disposed = true;
       stream?.getTracks().forEach((track) => track.stop());
+      peer.close();
     };
-  }, []);
+  }, [send]);
+
+  useEffect(() => {
+    const peer = peerRef.current;
+    if (!peer || !rtcSignal?.payload || rtcSignal.actor?.id === user.id) return;
+
+    async function handleSignal() {
+      try {
+        const payload = rtcSignal?.payload;
+        if (!payload || !peer) return;
+        if (payload.kind === "description") {
+          const description = payload.description as RTCSessionDescriptionInit;
+          const offerCollision =
+            description.type === "offer" && (makingOfferRef.current || peer.signalingState !== "stable");
+
+          ignoreOfferRef.current = user.role !== "tutor" && offerCollision;
+          if (ignoreOfferRef.current) return;
+
+          await peer.setRemoteDescription(description);
+          if (description.type === "offer") {
+            await peer.setLocalDescription();
+            if (peer.localDescription) {
+              send("webrtc.signal", { kind: "description", description: peer.localDescription.toJSON() });
+            }
+          }
+        }
+
+        if (payload.kind === "ice" && payload.candidate) {
+          try {
+            await peer.addIceCandidate(payload.candidate as RTCIceCandidateInit);
+          } catch {
+            if (!ignoreOfferRef.current) setPeerState("ice retry needed");
+          }
+        }
+      } catch {
+        setPeerState("call setup paused");
+      }
+    }
+
+    handleSignal();
+  }, [rtcSignal, send, user.id, user.role]);
 
   function toggleMic() {
-    const stream = videoRef.current?.srcObject as MediaStream | null;
+    const stream = localVideoRef.current?.srcObject as MediaStream | null;
     stream?.getAudioTracks().forEach((track) => {
       track.enabled = muted;
     });
@@ -391,14 +592,22 @@ function LocalVideoPane({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="local-call">
-      <video ref={videoRef} autoPlay playsInline muted />
-      <div className="remote-tile">
-        <span>tutor/student peer</span>
-        <strong>Low Prep Room {sessionId}</strong>
+    <div className="peer-call">
+      <video className="remote-video" ref={remoteVideoRef} autoPlay playsInline />
+      {!remoteActive && (
+        <div className="remote-empty">
+          <span>{peerState}</span>
+          <strong>Low Prep Room {sessionId}</strong>
+        </div>
+      )}
+      <div className="local-tile">
+        <video ref={localVideoRef} autoPlay playsInline muted />
+        <span>{user.role}</span>
       </div>
       <div className="call-controls">
-        <span>{cameraState}</span>
+        <span>
+          {cameraState} · {connection} · {peerState}
+        </span>
         <button className="secondary" onClick={toggleMic}>
           {muted ? "Unmute mic" : "Mute mic"}
         </button>
@@ -424,13 +633,15 @@ function ConceptLoom({
     () => Object.values(loom.clarity).reduce((sum, value) => sum + value, 0),
     [loom.clarity]
   );
+  const displayConcepts = useMemo(() => graphLayout(loom.concepts), [loom.concepts]);
 
   function addConcept() {
     if (!conceptLabel.trim()) return;
+    const position = nextConceptPosition(loom.concepts);
     send("loom.concept.add", {
       label: conceptLabel,
-      x: 15 + Math.random() * 70,
-      y: 18 + Math.random() * 64
+      x: position.x,
+      y: position.y
     });
     setConceptLabel("");
   }
@@ -447,7 +658,7 @@ function ConceptLoom({
           <p className="eyebrow">Concept Loom</p>
           <h2>Shared memory for this lesson</h2>
         </div>
-        <span>{user.name}</span>
+        <span>{loom.concepts.length} concepts</span>
       </div>
       <label className="notes">
         Live explanation
@@ -462,9 +673,16 @@ function ConceptLoom({
       </label>
       <div className="loom-grid">
         <div className="graph-surface">
+          <div className="graph-toolbar">
+            <span>Learning map</span>
+            <small>anchors to examples to checkpoints</small>
+          </div>
+          <span className="axis-label axis-start">start</span>
+          <span className="axis-label axis-build">build</span>
+          <span className="axis-label axis-apply">apply</span>
           {loom.links.map((link, index) => {
-            const source = loom.concepts.find((concept) => concept.id === link.source);
-            const target = loom.concepts.find((concept) => concept.id === link.target);
+            const source = displayConcepts.find((concept) => concept.id === link.source);
+            const target = displayConcepts.find((concept) => concept.id === link.target);
             if (!source || !target) return null;
             return (
               <svg className="graph-link" key={`${link.source}-${link.target}-${index}`}>
@@ -472,13 +690,14 @@ function ConceptLoom({
               </svg>
             );
           })}
-          {loom.concepts.map((concept) => (
+          {displayConcepts.map((concept, index) => (
             <button
               className="concept-node"
               key={concept.id}
               style={{ left: `${concept.x}%`, top: `${concept.y}%` }}
               title={concept.owner}
             >
+              <small>{String(index + 1).padStart(2, "0")}</small>
               {concept.label}
             </button>
           ))}
@@ -488,6 +707,9 @@ function ConceptLoom({
             <input
               value={conceptLabel}
               onChange={(event) => setConceptLabel(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") addConcept();
+              }}
               placeholder="New concept"
             />
             <button onClick={addConcept}>Add</button>
@@ -511,6 +733,7 @@ function ConceptLoom({
           <input value={checkpoint} onChange={(event) => setCheckpoint(event.target.value)} placeholder="Next checkpoint" />
           <button
             onClick={() => {
+              if (!checkpoint.trim()) return;
               send("loom.checkpoint.add", { text: checkpoint });
               setCheckpoint("");
             }}

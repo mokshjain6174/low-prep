@@ -10,7 +10,7 @@ Low Prep is a dual-pane tutoring prototype: a simple student/tutor scheduling fl
 - Student and tutor dashboards
 - Student session requests and tutor acceptance
 - Dual-pane session room
-- Browser camera/audio video pane for local demos
+- Peer-to-peer WebRTC video/audio pane
 - WebSocket-synchronized "Concept Loom" innovation pane
 - Architecture and WebSocket event documentation for judges
 
