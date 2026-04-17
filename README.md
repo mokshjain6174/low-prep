@@ -1,4 +1,4 @@
-# CoLearn
+# Aura EdTech
 
 Low Prep is a dual-pane live tutoring platform built for the Athira problem statement. It keeps the familiar video-call experience, then adds a real-time learning workspace where concepts, clarity, notes, and checkpoints become visible during the session.
 
