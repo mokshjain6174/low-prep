@@ -1,6 +1,6 @@
 # Aura EdTech
 
-Low Prep is a dual-pane live tutoring platform built for the Athira problem statement. It keeps the familiar video-call experience, then adds a real-time learning workspace where concepts, clarity, notes, and checkpoints become visible during the session.
+Aura EdTech is a dual-pane live tutoring platform built for the Athira problem statement. It keeps the familiar video-call experience, then adds a real-time learning workspace where concepts, clarity, notes, and checkpoints become visible during the session.
 
 ## Live Links
 
@@ -259,7 +259,5 @@ VITE_API_URL=https://low-prep.onrender.com
 - Some strict networks may require TURN credentials for reliable WebRTC traversal. The current prototype uses STUN and direct peer-to-peer media.
 - The project uses in-memory state for demo speed. A production version should use a database such as Postgres.
 
-## Additional Docs
 
-- [Architecture](docs/architecture.md)
-- [WebSocket Events](docs/websocket-events.md)
+
