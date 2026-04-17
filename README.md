@@ -4,6 +4,7 @@ Aura EdTech is a dual-pane live tutoring platform built for the Athira problem s
 
 ## Live Links
 
+- Demo Video: [https://drive.google.com/file/d/1DDJJvkYDWT3eivMKImsLXn5ddj_vI_8U/view?usp=sharing](https://drive.google.com/file/d/1DDJJvkYDWT3eivMKImsLXn5ddj_vI_8U/view?usp=sharing)
 - Live demo: [https://low-prep.vercel.app](https://low-prep.vercel.app)
 - Backup Vercel deployment: [https://low-prep-dipyk7n3r-moksh-jains-projects-71607069.vercel.app](https://low-prep-dipyk7n3r-moksh-jains-projects-71607069.vercel.app)
 - Backend health check: [https://low-prep.onrender.com/health](https://low-prep.onrender.com/health)
