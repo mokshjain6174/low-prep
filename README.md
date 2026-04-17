@@ -4,10 +4,10 @@ Low Prep is a dual-pane live tutoring platform built for the Athira problem stat
 
 ## Live Links
 
-- Live demo: https://low-prep.vercel.app
-- Backup Vercel deployment: https://low-prep-dipyk7n3r-moksh-jains-projects-71607069.vercel.app
-- Backend health check: https://low-prep.onrender.com/health
-- GitHub repository: https://github.com/mokshjain6174/low-prep
+- Live demo: [https://low-prep.vercel.app](https://low-prep.vercel.app)
+- Backup Vercel deployment: [https://low-prep-dipyk7n3r-moksh-jains-projects-71607069.vercel.app](https://low-prep-dipyk7n3r-moksh-jains-projects-71607069.vercel.app)
+- Backend health check: [https://low-prep.onrender.com/health](https://low-prep.onrender.com/health)
+- GitHub repository: [https://github.com/mokshjain6174/low-prep](https://github.com/mokshjain6174/low-prep)
 
 If the Render backend is asleep, open the health check first and wait for `{"status":"ok"}` before using the app.
 
